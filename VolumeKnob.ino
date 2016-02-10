@@ -1,3 +1,5 @@
+#include <OneButton.h>
+
 // see tutorial at http://learn.adafruit.com/trinket-usb-volume-knob
 
 #include "TrinketHidCombo.h"
@@ -7,9 +9,10 @@
 #define TRINKET_PINx  PINB
 #define PIN_ENCODER_SWITCH 1
 
+OneButton button(PIN_ENCODER_SWITCH, false);
+
 static uint8_t enc_prev_pos   = 0;
 static uint8_t enc_flags      = 0;
-static char    sw_was_pressed = 0;
 
 void setup()
 {
@@ -18,11 +21,6 @@ void setup()
   pinMode(PIN_ENCODER_B, INPUT);
   digitalWrite(PIN_ENCODER_A, HIGH);
   digitalWrite(PIN_ENCODER_B, HIGH);
-
-  pinMode(PIN_ENCODER_SWITCH, INPUT);
-  // the switch is active-high, not active-low
-  // since it shares the pin with Trinket's built-in LED
-  // the LED acts as a pull-down resistor
   digitalWrite(PIN_ENCODER_SWITCH, LOW);
 
   TrinketHidCombo.begin(); // start the USB device engine and enumerate
@@ -34,10 +32,48 @@ void setup()
   if (digitalRead(PIN_ENCODER_B) == LOW) {
     enc_prev_pos |= (1 << 1);
   }
+
+  button.attachClick(click);
+  button.attachDoubleClick(doubleClick);
+  button.setClickTicks(200);
+}
+
+void click() 
+{
+  TrinketHidCombo.pressMultimediaKey(MMKEY_PLAYPAUSE);
+}
+
+void doubleClick()
+{
+  TrinketHidCombo.pressMultimediaKey(MMKEY_MUTE); 
 }
 
 void loop()
 {
+  int8_t enc_action = getEncoderAction();
+
+  if (enc_action > 0) {
+    if (bit_is_set(TRINKET_PINx, PIN_ENCODER_SWITCH)) {
+      TrinketHidCombo.pressMultimediaKey(MMKEY_SCAN_NEXT_TRACK);
+    }
+    else {
+      TrinketHidCombo.pressMultimediaKey(MMKEY_VOL_UP);
+    }
+  }
+  else if (enc_action < 0) {
+    if (bit_is_set(TRINKET_PINx, PIN_ENCODER_SWITCH)) {
+      TrinketHidCombo.pressMultimediaKey(MMKEY_SCAN_PREV_TRACK);
+    }
+    else {
+      TrinketHidCombo.pressMultimediaKey(MMKEY_VOL_DOWN);
+    }
+  }
+  
+  button.tick();
+  TrinketHidCombo.poll(); // check if USB needs anything done
+}
+
+int8_t getEncoderAction() {
   int8_t enc_action = 0; // 1 or -1 if moved, sign is direction
 
   // note: for better performance, the code will now use
@@ -103,30 +139,7 @@ void loop()
 
   enc_prev_pos = enc_cur_pos;
 
-  if (enc_action > 0) {
-    TrinketHidCombo.pressMultimediaKey(MMKEY_VOL_UP);
-  }
-  else if (enc_action < 0) {
-    TrinketHidCombo.pressMultimediaKey(MMKEY_VOL_DOWN);
-  }
-
-  // remember that the switch is active-high
-  if (bit_is_set(TRINKET_PINx, PIN_ENCODER_SWITCH)) 
-  {
-    if (sw_was_pressed == 0) // only on initial press, so the keystroke is not repeated while the button is held down
-    {
-      TrinketHidCombo.pressMultimediaKey(MMKEY_SCAN_NEXT_TRACK);
-      delay(5); // debounce delay
-    }
-    sw_was_pressed = 1;
-  }
-  else
-  {
-    if (sw_was_pressed != 0) {
-      delay(5); // debounce delay
-    }
-    sw_was_pressed = 0;
-  }
-
-  TrinketHidCombo.poll(); // check if USB needs anything done
+  return enc_action;
 }
+
+
